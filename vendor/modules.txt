@@ -1,0 +1,9 @@
+# github.com/beevik/etree v1.1.0
+## explicit
+github.com/beevik/etree
+# github.com/gorilla/mux v1.8.0
+## explicit
+github.com/gorilla/mux
+# github.com/libvirt/libvirt-go v6.7.0+incompatible
+## explicit
+github.com/libvirt/libvirt-go
