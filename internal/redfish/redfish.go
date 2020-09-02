@@ -81,7 +81,7 @@ func (rf *Server) checkBMCCredentials(UUID string, w http.ResponseWriter, r *htt
 		if s, ok := rf.systems[UUID]; ok {
 			match = s.Username == username && s.Password == password
 			if !match {
-				http.Error(w, "Credentials mismatch", http.StatusBadRequest)
+				http.Error(w, "Credentials mismatch", http.StatusUnauthorized)
 			}
 		} else {
 			http.Error(w, "Unable to find system "+UUID, http.StatusBadRequest)
