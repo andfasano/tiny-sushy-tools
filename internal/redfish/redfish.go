@@ -76,6 +76,7 @@ func (rf *Server) logRequest(src string, r *http.Request) {
 }
 
 func (rf *Server) checkBMCCredentials(UUID string, w http.ResponseWriter, r *http.Request) (match bool) {
+
 	if username, password, ok := r.BasicAuth(); ok {
 		if s, ok := rf.systems[UUID]; ok {
 			match = s.Username == username && s.Password == password
@@ -128,9 +129,6 @@ func (rf *Server) handleSystemsByID(w http.ResponseWriter, r *http.Request) {
 	log.Println("-- Request System " + mux.Vars(r)["identity"])
 
 	UUID := mux.Vars(r)["identity"]
-	if !rf.checkBMCCredentials(UUID, w, r) {
-		return
-	}
 
 	switch r.Method {
 	case http.MethodGet:
@@ -139,6 +137,10 @@ func (rf *Server) handleSystemsByID(w http.ResponseWriter, r *http.Request) {
 		if ok == false {
 			s = newSystem(UUID)
 			rf.systems[UUID] = s
+		}
+
+		if !rf.checkBMCCredentials(UUID, w, r) {
+			return
 		}
 		s.Send(w)
 
