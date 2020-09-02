@@ -81,7 +81,26 @@ func (rf *Server) checkBMCCredentials(UUID string, w http.ResponseWriter, r *htt
 		if s, ok := rf.systems[UUID]; ok {
 			match = s.Username == username && s.Password == password
 			if !match {
-				http.Error(w, "Credentials mismatch", http.StatusUnauthorized)
+
+				errorTemplate := `
+				{
+					"error": {
+					  "code": "Base.1.0.GeneralError",
+					  "message": "A general error has occurred. See ExtendedInfo for more information.",
+					  "@Message.ExtendedInfo": [
+						{
+						  "MessageId": "GEN1234",
+						  "RelatedProperties": [],
+						  "Message": "Unable to process the request because an error occurred.",
+						  "MessageArgs": [],
+						  "Severity": "Critical",
+						  "Resolution": "Retry the operation. If the issue persists, contact your system administrator."
+						}
+					  ]
+					}
+				  }`
+
+				http.Error(w, errorTemplate, http.StatusUnauthorized)
 			}
 		} else {
 			http.Error(w, "Unable to find system "+UUID, http.StatusBadRequest)
