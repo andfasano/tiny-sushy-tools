@@ -50,7 +50,7 @@ type libvirtDomainFacade struct {
 }
 
 func newLibvirtDomain(UUID string) *libvirtDomainFacade {
-	conn, err := libvirt.NewConnect("qemu+ssh://root@192.168.111.1/system?&keyfile=./id_rsa_virt_power&no_verify=1&no_tty=1")
+	conn, err := libvirt.NewConnect("qemu+ssh://root@192.168.111.1/system?&keyfile=~/.ssh/id_rsa_virt_power&no_verify=1&no_tty=1")
 	if err != nil {
 		panic(err)
 	}

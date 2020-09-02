@@ -1,6 +1,7 @@
 package redfish
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -13,18 +14,21 @@ import (
 type Server struct {
 	router *mux.Router
 
-	systems map[string]system
+	systems map[string]*system
 }
 
 //New creates a new instance of the Redfish server
 func New() *Server {
-	return &Server{}
+	return &Server{
+		systems: make(map[string]*system),
+	}
 }
 
 //Start initialize and kicks off the redfish server
 func (rf *Server) Start(port string) {
 	rf.router = mux.NewRouter()
 
+	//RedFish protocol
 	rf.router.HandleFunc("/", rf.handleCatchAll)
 	rf.router.HandleFunc("/redfish/v1/", rf.handleEntrypoint)
 
@@ -56,7 +60,10 @@ func (rf *Server) Start(port string) {
 	// r.router.HandleFunc("/redfish/v1/Systems/{identity}/Storage/{storage_id}/Volumes", handleSystemsStorageVolumes).Methods("GET", "POST")
 	// r.router.HandleFunc("/redfish/v1/Systems/{identity}/Storage/{storage_id}/Volumes/{volume_id}", handleSystemsStorageVolumesByID).Methods("GET")
 
-	log.Println("Starting RedFish server...")
+	//Mock protocol
+	rf.router.HandleFunc("/mock/Systems/{identity}/Credentials", rf.handleMockSystemsCredentials).Methods("PUT")
+
+	log.Println("Starting RedFish mock server on port ", port)
 	log.Fatal(http.ListenAndServe(":"+port, rf.router))
 }
 
@@ -68,20 +75,70 @@ func (rf *Server) logRequest(src string, r *http.Request) {
 	log.Println(src, " --- ", string(requestDump))
 }
 
+func (rf *Server) checkBMCCredentials(UUID string, w http.ResponseWriter, r *http.Request) (match bool) {
+	if username, password, ok := r.BasicAuth(); ok {
+		if s, ok := rf.systems[UUID]; ok {
+			match = s.Username == username && s.Password == password
+			if !match {
+				http.Error(w, "Credentials mismatch", http.StatusBadRequest)
+			}
+		} else {
+			http.Error(w, "Unable to find system "+UUID, http.StatusBadRequest)
+		}
+	} else {
+		log.Println("No auth")
+		match = true
+	}
+
+	return
+}
+
+func (rf *Server) handleMockSystemsCredentials(w http.ResponseWriter, r *http.Request) {
+	UUID := mux.Vars(r)["identity"]
+	log.Println("### Changing system credentials for " + UUID)
+
+	creds := struct {
+		Username string
+		Password string
+	}{}
+
+	err := json.NewDecoder(r.Body).Decode(&creds)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if creds.Username == "" || creds.Password == "" {
+		http.Error(w, "Missing one or more parameters", http.StatusBadRequest)
+		return
+	}
+
+	if s, ok := rf.systems[UUID]; ok {
+		s.Username = creds.Username
+		s.Password = creds.Password
+		fmt.Fprintf(w, "Creds: %+v", rf.systems[UUID])
+	} else {
+		http.Error(w, "Unable to find system "+UUID, http.StatusBadRequest)
+		return
+	}
+
+}
+
 func (rf *Server) handleSystemsByID(w http.ResponseWriter, r *http.Request) {
 	log.Println("-- Request System " + mux.Vars(r)["identity"])
 
-	if user, password, ok := r.BasicAuth(); ok {
-		log.Println("user: ", user, ", password: ", password)
+	UUID := mux.Vars(r)["identity"]
+	if !rf.checkBMCCredentials(UUID, w, r) {
+		return
 	}
 
 	switch r.Method {
 	case http.MethodGet:
 
-		UUID := mux.Vars(r)["identity"]
 		s, ok := rf.systems[UUID]
 		if ok == false {
-			s = *newSystem(UUID)
+			s = newSystem(UUID)
+			rf.systems[UUID] = s
 		}
 		s.Send(w)
 
