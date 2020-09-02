@@ -1,17 +1,11 @@
 package redfish
 
 import (
-	"io"
 	"strconv"
-	"strings"
-	"text/template"
 
 	"github.com/beevik/etree"
 	libvirt "github.com/libvirt/libvirt-go"
 )
-
-type libvirtdriver struct {
-}
 
 const DEVICE_TYPE_PXE = "Pxe"
 const DEVICE_TYPE_HDD = "Hdd"
@@ -50,239 +44,145 @@ func reverseMap(src map[string]string) map[string]string {
 	return dest
 }
 
-func (l *libvirtdriver) getDomainByID(id string, wr io.Writer) {
+type libvirtDomainFacade struct {
+	conn   *libvirt.Connect
+	domain *libvirt.Domain
+}
+
+func newLibvirtDomain(UUID string) *libvirtDomainFacade {
 	conn, err := libvirt.NewConnect("qemu+ssh://root@192.168.111.1/system?&keyfile=./id_rsa_virt_power&no_verify=1&no_tty=1")
 	if err != nil {
 		panic(err)
 	}
-	defer conn.Close()
 
-	doms, err := conn.ListAllDomains(libvirt.CONNECT_LIST_DOMAINS_ACTIVE)
+	dom, err := conn.LookupDomainByUUIDString(UUID)
 	if err != nil {
 		panic(err)
 	}
 
-	tpl, err := template.
-		New("system").
-		Funcs(template.FuncMap{
-			"strContains": func(src string, tgt string) bool {
-				res := strings.EqualFold(src, tgt)
-				return res
-			},
-		}).
-		Parse(templateSystem)
-	if err != nil {
-		panic(err)
+	facade := &libvirtDomainFacade{
+		conn:   conn,
+		domain: dom,
 	}
 
-	for _, d := range doms {
-
-		UUID, _ := d.GetUUIDString()
-
-		if id == UUID {
-
-			//d.SetUserPassword()
-
-			input := struct {
-				Identity         string
-				Name             string
-				UUID             string
-				PowerState       string
-				BootSourceTarget string
-				BootSourceMode   string
-				TotalCpus        uint
-				TotalMemoryGB    uint64
-				IndicatorLed     string
-			}{
-				UUID:             UUID,
-				Identity:         UUID,
-				PowerState:       "Off",
-				IndicatorLed:     "Lit",
-				BootSourceTarget: "None",
-				BootSourceMode:   "None",
-			}
-
-			input.Name, _ = d.GetName()
-
-			if active, _ := d.IsActive(); active {
-				input.PowerState = "On"
-			}
-
-			////////// BootSourceTarget
-			xmlDesc, _ := d.GetXMLDesc(libvirt.DOMAIN_XML_INACTIVE)
-			doc := etree.NewDocument()
-			doc.ReadFromString(xmlDesc)
-
-			if boot := doc.FindElement(".//boot"); boot != nil {
-
-				if device := boot.SelectAttr("device"); device != nil {
-					input.BootSourceTarget = BOOT_DEVICE_MAP_REV[device.Value]
-				}
-			}
-
-			minOrder := -1
-			if devices := doc.FindElement(".//devices"); devices != nil && input.BootSourceTarget == "None" {
-
-				for _, disk := range devices.SelectElements("disk") {
-					boot := disk.SelectElement("boot")
-					if boot == nil {
-						continue
-					}
-					order, _ := strconv.Atoi(boot.SelectAttrValue("order", "1000"))
-					if minOrder != -1 && order >= minOrder {
-						continue
-					}
-					device := disk.SelectAttrValue("device", "")
-					if device == "" {
-						continue
-					}
-
-					if bootSourceTarget, ok := DISK_DEVICE_MAP_REV[device]; ok {
-						input.BootSourceTarget = bootSourceTarget
-						minOrder = order
-					}
-				}
-
-				for _, iface := range devices.SelectElements("interface") {
-					boot := iface.SelectElement("boot")
-					if boot == nil {
-						continue
-					}
-					order, _ := strconv.Atoi(boot.SelectAttrValue("order", "1000"))
-					if minOrder != -1 && order >= minOrder {
-						continue
-					}
-
-					input.BootSourceTarget = "Pxe"
-					minOrder = order
-				}
-			}
-
-			////////// BootSourceMode
-			loader := doc.FindElement(".//loader")
-			if loader != nil {
-				input.BootSourceMode = BOOT_MODE_MAP_REV[loader.SelectAttrValue("type", "None")]
-			}
-
-			///////
-			maxCpus, _ := d.GetMaxVcpus()
-			input.TotalCpus = maxCpus
-
-			maxMem, _ := d.GetMaxMemory()
-			input.TotalMemoryGB = maxMem / 1024 / 1024
-
-			err = tpl.Execute(wr, input)
-			if err != nil {
-				panic(err)
-			}
-		}
-	}
+	return facade
 }
 
-var templateSystem = `{
-    "@odata.type": "#ComputerSystem.v1_1_0.ComputerSystem",
-    "Id": "{{ .UUID }}",
-    "Name": "{{ .Name }}",
-    "UUID": "{{ .UUID }}",
-    "Status": {
-        "State": "Enabled",
-        "Health": "OK",
-        "HealthRollUp": "OK"
-    },
-	{{- if .PowerState }}
-    "PowerState": "{{ .PowerState }}",
-	{{- end }}
-	"Boot": {
-		{{- if .BootSourceTarget }}
-        "BootSourceOverrideEnabled": "Continuous",
-        "BootSourceOverrideTarget": "{{ .BootSourceTarget }}",
-        "BootSourceOverrideTarget@Redfish.AllowableValues": [
-			"Pxe",
-			"Cd",
-			"Hdd"
-		{{- if .BootSourceMode }}
-		],
-		{{- if strContains .BootSourceMode "uefi" }}
-		"BootSourceOverrideMode": "{{ .BootSourceMode }}",
-		"UefiTargetBootSourceOverride": "/0x31/0x33/0x01/0x01"
-		{{- else }}
-		"BootSourceOverrideMode": {{ .BootSourceMode }},
-		{{- end }}
-		{{- else }}
-		]
-		{{- end}}
-		{{- else }}
-		"BootSourceOverrideEnabled": "Continuous"
-		{{- end }}
-	},
-	"ProcessorSummary": {
-        {{- if .TotalCpus }}
-        "Count": {{ .TotalCpus }},
-        {{- end }}
-        "Status": {
-            "State": "Enabled",
-            "Health": "OK",
-            "HealthRollUp": "OK"
-        }
-	},
-	"MemorySummary": {
-        {{- if .TotalMemoryGB }}
-        "TotalSystemMemoryGiB": {{ .TotalMemoryGB }},
-        {{- end }}
-        "Status": {
-            "State": "Enabled",
-            "Health": "OK",
-            "HealthRollUp": "OK"
-        }
-	},
-	"Bios": {
-        "@odata.id": "/redfish/v1/Systems/{{ .UUID }}/BIOS" 
-	},
-	"Processors": {
-        "@odata.id": "/redfish/v1/Systems/{{ .UUID }}/Processors"
-    },
-    "Memory": {
-        "@odata.id": "/redfish/v1/Systems/{{ .UUID }}/Memory"
-    },
-    "EthernetInterfaces": {
-        "@odata.id": "/redfish/v1/Systems/{{ .UUID }}/EthernetInterfaces"
-    },
-    "SimpleStorage": {
-        "@odata.id": "/redfish/v1/Systems/{{ .UUID }}/SimpleStorage"
-    },
-    "Storage": {
-        "@odata.id": "/redfish/v1/Systems/{{ .UUID }}/Storage"
-	},
-	{{- if .IndicatorLed }}
-    "IndicatorLED": "{{ .IndicatorLed }}",
-	{{- end }}
-	"Links": {
-		"Chassis": [
-			{
-                "@odata.id": "/redfish/v1/Chassis/15693887-7984-9484-3272-842188918912"
-            }
-			],
-        "ManagedBy": [
-            {
-                "@odata.id": "/redfish/v1/Managers/{{ .UUID }}"
-            }
-        ]		
-	},
-	"Actions": {
-        "#ComputerSystem.Reset": {
-            "target": "/redfish/v1/Systems/{{ .UUID }}/Actions/ComputerSystem.Reset",
-            "ResetType@Redfish.AllowableValues": [
-                "On",
-                "ForceOff",
-                "GracefulShutdown",
-                "GracefulRestart",
-                "ForceRestart",
-                "Nmi",
-                "ForceOn"
-            ]
-        }
-	},
-	"@odata.context": "/redfish/v1/$metadata#ComputerSystem.ComputerSystem",
-	"@odata.id": "/redfish/v1/Systems/{{ .UUID }}",
-	"@Redfish.Copyright": "Copyright 2014-2016 Distributed Management Task Force, Inc. (DMTF). For the full DMTF copyright policy, see http://www.dmtf.org/about/policies/copyright."
-}`
+func (l *libvirtDomainFacade) close() {
+	l.conn.Close()
+}
+
+func (l *libvirtDomainFacade) getName() string {
+	name, err := l.domain.GetName()
+	if err != nil {
+		panic(err)
+	}
+	return name
+}
+
+func (l *libvirtDomainFacade) getPowerState() string {
+	state := "Off"
+	active, err := l.domain.IsActive()
+	if err != nil {
+		panic(err)
+	}
+
+	if active {
+		state = "On"
+	}
+
+	return state
+}
+
+func (l *libvirtDomainFacade) getBootSourceTarget() string {
+
+	xmlDesc, err := l.domain.GetXMLDesc(libvirt.DOMAIN_XML_INACTIVE)
+	if err != nil {
+		panic(err)
+	}
+	doc := etree.NewDocument()
+	doc.ReadFromString(xmlDesc)
+
+	if boot := doc.FindElement(".//boot"); boot != nil {
+
+		if device := boot.SelectAttr("device"); device != nil {
+			return BOOT_DEVICE_MAP_REV[device.Value]
+		}
+	}
+
+	minOrder := -1
+	target := ""
+	if devices := doc.FindElement(".//devices"); devices != nil {
+
+		for _, disk := range devices.SelectElements("disk") {
+			boot := disk.SelectElement("boot")
+			if boot == nil {
+				continue
+			}
+			order, _ := strconv.Atoi(boot.SelectAttrValue("order", "1000"))
+			if minOrder != -1 && order >= minOrder {
+				continue
+			}
+			device := disk.SelectAttrValue("device", "")
+			if device == "" {
+				continue
+			}
+
+			if bootSourceTarget, ok := DISK_DEVICE_MAP_REV[device]; ok {
+				target = bootSourceTarget
+				minOrder = order
+			}
+		}
+
+		for _, iface := range devices.SelectElements("interface") {
+			boot := iface.SelectElement("boot")
+			if boot == nil {
+				continue
+			}
+			order, _ := strconv.Atoi(boot.SelectAttrValue("order", "1000"))
+			if minOrder != -1 && order >= minOrder {
+				continue
+			}
+
+			target = "Pxe"
+			minOrder = order
+		}
+
+	}
+
+	return target
+}
+
+func (l *libvirtDomainFacade) getBootSourceMode() string {
+	mode := "None"
+
+	xmlDesc, err := l.domain.GetXMLDesc(libvirt.DOMAIN_XML_INACTIVE)
+	if err != nil {
+		panic(err)
+	}
+	doc := etree.NewDocument()
+	doc.ReadFromString(xmlDesc)
+
+	loader := doc.FindElement(".//loader")
+	if loader != nil {
+		mode = BOOT_MODE_MAP_REV[loader.SelectAttrValue("type", "None")]
+	}
+
+	return mode
+}
+
+func (l *libvirtDomainFacade) getTotalCpus() uint {
+	maxCpus, err := l.domain.GetMaxVcpus()
+	if err != nil {
+		panic(err)
+	}
+	return maxCpus
+}
+
+func (l *libvirtDomainFacade) getTotalMemory() uint64 {
+	maxMem, err := l.domain.GetMaxMemory()
+	if err != nil {
+		panic(err)
+	}
+	return maxMem / 1024 / 1024
+}

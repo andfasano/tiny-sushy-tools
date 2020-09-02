@@ -9,17 +9,20 @@ import (
 	"github.com/gorilla/mux"
 )
 
-type redfishServer struct {
+//Server represents a mock server supporting partially the RedFish protocol
+type Server struct {
 	router *mux.Router
+
+	systems map[string]system
 }
 
-//New creats a new redfish server
-func New() *redfishServer {
-	return &redfishServer{}
+//New creates a new instance of the Redfish server
+func New() *Server {
+	return &Server{}
 }
 
 //Start initialize and kicks off the redfish server
-func (rf *redfishServer) Start() {
+func (rf *Server) Start(port string) {
 	rf.router = mux.NewRouter()
 
 	rf.router.HandleFunc("/", rf.handleCatchAll)
@@ -54,10 +57,10 @@ func (rf *redfishServer) Start() {
 	// r.router.HandleFunc("/redfish/v1/Systems/{identity}/Storage/{storage_id}/Volumes/{volume_id}", handleSystemsStorageVolumesByID).Methods("GET")
 
 	log.Println("Starting RedFish server...")
-	log.Fatal(http.ListenAndServe(":8000", rf.router))
+	log.Fatal(http.ListenAndServe(":"+port, rf.router))
 }
 
-func (rf *redfishServer) logRequest(src string, r *http.Request) {
+func (rf *Server) logRequest(src string, r *http.Request) {
 	requestDump, err := httputil.DumpRequest(r, true)
 	if err != nil {
 		fmt.Println(err)
@@ -65,7 +68,7 @@ func (rf *redfishServer) logRequest(src string, r *http.Request) {
 	log.Println(src, " --- ", string(requestDump))
 }
 
-func (rf *redfishServer) handleSystemsByID(w http.ResponseWriter, r *http.Request) {
+func (rf *Server) handleSystemsByID(w http.ResponseWriter, r *http.Request) {
 	log.Println("-- Request System " + mux.Vars(r)["identity"])
 
 	if user, password, ok := r.BasicAuth(); ok {
@@ -74,19 +77,25 @@ func (rf *redfishServer) handleSystemsByID(w http.ResponseWriter, r *http.Reques
 
 	switch r.Method {
 	case http.MethodGet:
-		lv := &libvirtdriver{}
-		lv.getDomainByID(mux.Vars(r)["identity"], w)
+
+		UUID := mux.Vars(r)["identity"]
+		s, ok := rf.systems[UUID]
+		if ok == false {
+			s = *newSystem(UUID)
+		}
+		s.Send(w)
+
 		break
 	default:
 		log.Fatal("Method not supported")
 	}
 }
 
-func (rf *redfishServer) handleSystems(w http.ResponseWriter, r *http.Request) {
+func (rf *Server) handleSystems(w http.ResponseWriter, r *http.Request) {
 	rf.logRequest("/redfish/v1/Systems", r)
 }
 
-func (rf *redfishServer) handleEntrypoint(w http.ResponseWriter, r *http.Request) {
+func (rf *Server) handleEntrypoint(w http.ResponseWriter, r *http.Request) {
 	log.Println("-- Main entry")
 
 	rootTemplate := `{
@@ -108,7 +117,7 @@ func (rf *redfishServer) handleEntrypoint(w http.ResponseWriter, r *http.Request
 	w.Write([]byte(rootTemplate))
 }
 
-func (rf *redfishServer) handleCatchAll(w http.ResponseWriter, r *http.Request) {
+func (rf *Server) handleCatchAll(w http.ResponseWriter, r *http.Request) {
 	rf.logRequest("/", r)
 	http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 }

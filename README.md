@@ -1,5 +1,7 @@
 # tiny-sushy-tools
 
+Very small (and not complete) Go porting of the original [sushy-tools project](https://github.com/openstack/sushy-tools) meant to support testing of the [Metal3 BareMetal Operator](https://github.com/metal3-io/baremetal-operator/)
+
 # Pre-requisites
 
 Install the libvirt-dev package:

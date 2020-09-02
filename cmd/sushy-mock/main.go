@@ -6,5 +6,5 @@ import (
 
 func main() {
 	server := redfish.New()
-	server.Start()
+	server.Start("8000")
 }
