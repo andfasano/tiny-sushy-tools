@@ -14,7 +14,7 @@ func main() {
 
 	flag.StringVar(&tiny_sushy_port, "port", "8000", "port to listen")
 	flag.StringVar(&tiny_libvirt_user, "user", "root", "user for libvirt connection")
-	flag.StringVar(&tiny_libvirt_ip, "ip", "192.168.1.13", "ip of libvirt server")
+	flag.StringVar(&tiny_libvirt_ip, "ip", "127.0.0.1", "ip of libvirt server")
 	flag.StringVar(&tiny_libvirt_key, "keyfile", "~/.ssh/id_rsa", "path to ssh key for libvirt server")
 
 	flag.Parse()
