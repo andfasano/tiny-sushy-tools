@@ -49,8 +49,37 @@ type libvirtDomainFacade struct {
 	domain *libvirt.Domain
 }
 
+func Uri(user string, ip string, keyfilePath string, parameters string) (string, error) {
+	// concatenate everything
+	// Uri(user, ip, keyfile, parameters)
+	// default URI: "qemu+ssh://root@192.168.111.1/system?&keyfile=~/.ssh/id_rsa_virt_power&no_verify=1&no_tty=1"
+	var lvUrl string
+
+	if user == "" {
+		user = "root"
+	}
+
+	if ip == "" {
+		ip = "192.168.111.1"
+	}
+
+	if keyfilePath == "" {
+		keyfilePath = "~/.ssh/id_rsa_virt_power"
+	}
+
+	if parameters == "" {
+		parameters = "&no_verify=1&no_tty=1"
+	}
+
+	lvUrl = "qemu+ssh://" + user + "@" + ip + "/system?&keyfile=" + keyfile + parameters
+
+	fmt.println("URI set to: " + lvUrl)
+
+	return lvUrl, nil
+}
+
 func newLibvirtDomain(UUID string) *libvirtDomainFacade {
-	conn, err := libvirt.NewConnect("qemu+ssh://root@192.168.111.1/system?&keyfile=~/.ssh/id_rsa_virt_power&no_verify=1&no_tty=1")
+	conn, err := libvirt.NewConnect(Uri("root", "192.168.111.1", "~/.ssh/id_rsa_virt_power"))
 	if err != nil {
 		panic(err)
 	}
