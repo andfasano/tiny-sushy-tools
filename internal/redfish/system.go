@@ -35,6 +35,7 @@ func newSystem(UUID string) *system {
 
 	lv := newLibvirtDomain(UUID)
 
+	s.UUID = lv.getUUID()
 	s.Name = lv.getName()
 	s.PowerState = lv.getPowerState()
 	s.BootSourceTarget = lv.getBootSourceTarget()

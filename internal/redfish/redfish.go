@@ -10,6 +10,11 @@ import (
 	"github.com/gorilla/mux"
 )
 
+var TINY_SUSHY_PORT string = "8000"
+var TINY_LIBVIRT_USER string = "root"
+var TINY_LIBVIRT_IP string = "192.168.1.13"
+var TINY_LIBVIRT_KEY string = "~/.ssh/id_rsa"
+
 //Server represents a mock server supporting partially the RedFish protocol
 type Server struct {
 	router *mux.Router
@@ -25,8 +30,14 @@ func New() *Server {
 }
 
 //Start initialize and kicks off the redfish server
-func (rf *Server) Start(port string) {
+func (rf *Server) Start(port string, user string, ip string, keyfile string) {
 	rf.router = mux.NewRouter()
+
+	//Define global variables
+	TINY_SUSHY_PORT = port
+	TINY_LIBVIRT_USER = user
+	TINY_LIBVIRT_IP = ip
+	TINY_LIBVIRT_KEY = keyfile
 
 	//RedFish protocol
 	rf.router.HandleFunc("/", rf.handleCatchAll)
@@ -171,6 +182,8 @@ func (rf *Server) handleSystemsByID(w http.ResponseWriter, r *http.Request) {
 
 func (rf *Server) handleSystems(w http.ResponseWriter, r *http.Request) {
 	rf.logRequest("/redfish/v1/Systems", r)
+	response := "Listing not allowed. Please specify system identity /redfish/v1/Systems/{identity}"
+	http.Error(w, response, http.StatusForbidden)
 }
 
 func (rf *Server) handleEntrypoint(w http.ResponseWriter, r *http.Request) {
