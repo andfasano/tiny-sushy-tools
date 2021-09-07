@@ -4,6 +4,7 @@ go 1.14
 
 require (
 	github.com/beevik/etree v1.1.0
+	github.com/google/uuid v1.3.0
 	github.com/gorilla/mux v1.8.0
 	github.com/libvirt/libvirt-go v6.7.0+incompatible
 )

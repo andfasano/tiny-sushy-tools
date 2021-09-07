@@ -4,6 +4,7 @@ import (
 	"strconv"
 
 	"github.com/beevik/etree"
+	uuid "github.com/google/uuid"
 	libvirt "github.com/libvirt/libvirt-go"
 )
 
@@ -49,15 +50,51 @@ type libvirtDomainFacade struct {
 	domain *libvirt.Domain
 }
 
+func Uri(user string, ip string, keyfilePath string) (string, error) {
+	// default URI: "qemu+ssh://root@192.168.111.1/system?&keyfile=~/.ssh/id_rsa_virt_power&no_verify=1&no_tty=1"
+	var lvUrl string
+
+	if user == "" {
+		user = "root"
+	}
+
+	if ip == "" {
+		ip = "192.168.111.1"
+	}
+
+	if keyfilePath == "" {
+		keyfilePath = "~/.ssh/id_rsa_virt_power"
+	}
+
+	lvUrl = "qemu+ssh://" + user + "@" + ip + "/system?&keyfile=" + keyfilePath + "&no_verify=1&no_tty=1"
+
+	return lvUrl, nil
+}
+
+func isValidUUID(u string) bool {
+	_, err := uuid.Parse(u)
+	return err == nil
+}
+
 func newLibvirtDomain(UUID string) *libvirtDomainFacade {
-	conn, err := libvirt.NewConnect("qemu+ssh://root@192.168.111.1/system?&keyfile=~/.ssh/id_rsa_virt_power&no_verify=1&no_tty=1")
+	var dom *libvirt.Domain
+
+	url, _ := Uri(TINY_LIBVIRT_USER, TINY_LIBVIRT_IP, TINY_LIBVIRT_KEY)
+	conn, err := libvirt.NewConnect(url)
 	if err != nil {
 		panic(err)
 	}
 
-	dom, err := conn.LookupDomainByUUIDString(UUID)
-	if err != nil {
-		panic(err)
+	if isValidUUID(UUID) {
+		dom, err = conn.LookupDomainByUUIDString(UUID)
+		if err != nil {
+			panic(err)
+		}
+	} else {
+		dom, err = conn.LookupDomainByName(UUID)
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	facade := &libvirtDomainFacade{
@@ -78,6 +115,15 @@ func (l *libvirtDomainFacade) getName() string {
 		panic(err)
 	}
 	return name
+}
+
+func (l *libvirtDomainFacade) getUUID() string {
+	uuidBytes, err := l.domain.GetUUID()
+	if err != nil {
+		panic(err)
+	}
+	uuidstr, _ := uuid.FromBytes(uuidBytes)
+	return uuidstr.String()
 }
 
 func (l *libvirtDomainFacade) getPowerState() string {
