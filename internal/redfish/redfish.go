@@ -4,22 +4,24 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
+	"strconv"
 
 	"github.com/gorilla/mux"
 )
-
-var TINY_SUSHY_PORT string = "8000"
-var TINY_LIBVIRT_USER string = "root"
-var TINY_LIBVIRT_IP string = "192.168.1.13"
-var TINY_LIBVIRT_KEY string = "~/.ssh/id_rsa"
 
 //Server represents a mock server supporting partially the RedFish protocol
 type Server struct {
 	router *mux.Router
 
 	systems map[string]*system
+
+	TinySushyPort string
+	TinyOobUser   string
+	TinyOobIP     string
+	TinyOobKey    string
 }
 
 //New creates a new instance of the Redfish server
@@ -29,15 +31,60 @@ func New() *Server {
 	}
 }
 
+//Check if valid Port
+func isValidPort(port string) (bool, error) {
+	_, err := strconv.ParseUint(port, 10, 16)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+//Sanitize username
+func isValidUsername(user string) (bool, error) {
+	//NOT IMPLEMENTED - Do we have to sanitize username?
+	return true, nil
+}
+
+//Check if valid IP
+func isValidIP(ip string) (bool, error) {
+	if net.ParseIP(ip) == nil {
+		return false, nil
+	}
+	return true, nil
+}
+
+//Check if file exist
+func isValidKeyPath(keypath string) (bool, error) {
+	//NOTE: This does NOT work for check of relative path
+	// _, err := os.Stat(keypath)
+	// if err != nil {
+	// 	return false, err
+	// }
+	return true, nil
+}
+
 //Start initialize and kicks off the redfish server
-func (rf *Server) Start(port string, user string, ip string, keyfile string) {
+func (rf *Server) Start() {
 	rf.router = mux.NewRouter()
 
-	//Define global variables
-	TINY_SUSHY_PORT = port
-	TINY_LIBVIRT_USER = user
-	TINY_LIBVIRT_IP = ip
-	TINY_LIBVIRT_KEY = keyfile
+	//Run validations for variables
+	if isValid, _ := isValidPort(rf.TinySushyPort); !isValid {
+		log.Println("Invalid port ", rf.TinySushyPort)
+		log.Fatal("Invalid port")
+	}
+	if isValid, _ := isValidUsername(rf.TinyOobUser); !isValid {
+		log.Println("Invalid username string ", rf.TinyOobUser)
+		log.Fatal("Invalid username string")
+	}
+	if isValid, _ := isValidIP(rf.TinyOobIP); !isValid {
+		log.Println("Invalid IP address ", rf.TinyOobIP)
+		log.Fatal("Invalid IP address")
+	}
+	if isValid, _ := isValidKeyPath(rf.TinyOobKey); !isValid {
+		log.Println("File not found ", rf.TinyOobKey)
+		log.Fatal("File not found (private key)")
+	}
 
 	//RedFish protocol
 	rf.router.HandleFunc("/", rf.handleCatchAll)
@@ -74,8 +121,8 @@ func (rf *Server) Start(port string, user string, ip string, keyfile string) {
 	//Mock protocol
 	rf.router.HandleFunc("/mock/Systems/{identity}/Credentials", rf.handleMockSystemsCredentials).Methods("PUT")
 
-	log.Println("Starting RedFish mock server on port ", port)
-	log.Fatal(http.ListenAndServe(":"+port, rf.router))
+	log.Println("Starting RedFish mock server on port ", rf.TinySushyPort)
+	log.Fatal(http.ListenAndServe(":"+rf.TinySushyPort, rf.router))
 }
 
 func (rf *Server) logRequest(src string, r *http.Request) {
@@ -158,18 +205,18 @@ func (rf *Server) handleMockSystemsCredentials(w http.ResponseWriter, r *http.Re
 func (rf *Server) handleSystemsByID(w http.ResponseWriter, r *http.Request) {
 	log.Println("-- Request System " + mux.Vars(r)["identity"])
 
-	UUID := mux.Vars(r)["identity"]
+	systemID := mux.Vars(r)["identity"]
 
 	switch r.Method {
 	case http.MethodGet:
 
-		s, ok := rf.systems[UUID]
+		s, ok := rf.systems[systemID]
 		if ok == false {
-			s = newSystem(UUID)
-			rf.systems[UUID] = s
+			s = newSystem(systemID, rf)
+			rf.systems[systemID] = s
 		}
 
-		if !rf.checkBMCCredentials(UUID, w, r) {
+		if !rf.checkBMCCredentials(systemID, w, r) {
 			return
 		}
 		s.Send(w)

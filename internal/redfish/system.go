@@ -4,6 +4,8 @@ import (
 	"io"
 	"strings"
 	"text/template"
+
+	"github.com/andfasano/tiny-sushy-tools/internal/libvirtdriver"
 )
 
 type system struct {
@@ -21,27 +23,30 @@ type system struct {
 	Password string
 }
 
-func newSystem(UUID string) *system {
+func newSystem(systemID string, rf *Server) *system {
 	s := &system{
-		UUID:             UUID,
-		Identity:         UUID,
+		Identity:         systemID,
+		Name:             "",
+		UUID:             "",
 		PowerState:       "Off",
-		IndicatorLed:     "Lit",
 		BootSourceTarget: "None",
 		BootSourceMode:   "None",
+		TotalCpus:        0,
+		TotalMemoryGB:    0,
+		IndicatorLed:     "Lit",
 		Username:         "admin",
 		Password:         "password",
 	}
 
-	lv := newLibvirtDomain(UUID)
+	lv := libvirtdriver.NewLibvirtDomain(systemID, rf.TinyOobUser, rf.TinyOobIP, rf.TinyOobKey)
 
-	s.UUID = lv.getUUID()
-	s.Name = lv.getName()
-	s.PowerState = lv.getPowerState()
-	s.BootSourceTarget = lv.getBootSourceTarget()
-	s.BootSourceMode = lv.getBootSourceMode()
-	s.TotalCpus = lv.getTotalCpus()
-	s.TotalMemoryGB = lv.getTotalMemory()
+	s.UUID = lv.GetUUID()
+	s.Name = lv.GetName()
+	s.PowerState = lv.GetPowerState()
+	s.BootSourceTarget = lv.GetBootSourceTarget()
+	s.BootSourceMode = lv.GetBootSourceMode()
+	s.TotalCpus = lv.GetTotalCpus()
+	s.TotalMemoryGB = lv.GetTotalMemory()
 
 	return s
 }

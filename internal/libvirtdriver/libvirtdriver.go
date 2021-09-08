@@ -1,4 +1,4 @@
-package redfish
+package libvirtdriver
 
 import (
 	"strconv"
@@ -50,8 +50,8 @@ type libvirtDomainFacade struct {
 	domain *libvirt.Domain
 }
 
-func Uri(user string, ip string, keyfilePath string) (string, error) {
-	// default URI: "qemu+ssh://root@192.168.111.1/system?&keyfile=~/.ssh/id_rsa_virt_power&no_verify=1&no_tty=1"
+func uri(user string, ip string, keyfilePath string) (string, error) {
+	// default u: "qemu+ssh://root@192.168.111.1/system?&keyfile=~/.ssh/id_rsa_virt_power&no_verify=1&no_tty=1"
 	var lvUrl string
 
 	if user == "" {
@@ -76,22 +76,23 @@ func isValidUUID(u string) bool {
 	return err == nil
 }
 
-func newLibvirtDomain(UUID string) *libvirtDomainFacade {
+//Function exposed to
+func NewLibvirtDomain(systemID string, libvirtUser string, libvirtIP string, libvirtKey string) *libvirtDomainFacade {
 	var dom *libvirt.Domain
 
-	url, _ := Uri(TINY_LIBVIRT_USER, TINY_LIBVIRT_IP, TINY_LIBVIRT_KEY)
+	url, _ := uri(libvirtUser, libvirtIP, libvirtKey)
 	conn, err := libvirt.NewConnect(url)
 	if err != nil {
 		panic(err)
 	}
 
-	if isValidUUID(UUID) {
-		dom, err = conn.LookupDomainByUUIDString(UUID)
+	if isValidUUID(systemID) {
+		dom, err = conn.LookupDomainByUUIDString(systemID)
 		if err != nil {
 			panic(err)
 		}
 	} else {
-		dom, err = conn.LookupDomainByName(UUID)
+		dom, err = conn.LookupDomainByName(systemID)
 		if err != nil {
 			panic(err)
 		}
@@ -105,11 +106,11 @@ func newLibvirtDomain(UUID string) *libvirtDomainFacade {
 	return facade
 }
 
-func (l *libvirtDomainFacade) close() {
+func (l *libvirtDomainFacade) Close() {
 	l.conn.Close()
 }
 
-func (l *libvirtDomainFacade) getName() string {
+func (l *libvirtDomainFacade) GetName() string {
 	name, err := l.domain.GetName()
 	if err != nil {
 		panic(err)
@@ -117,7 +118,7 @@ func (l *libvirtDomainFacade) getName() string {
 	return name
 }
 
-func (l *libvirtDomainFacade) getUUID() string {
+func (l *libvirtDomainFacade) GetUUID() string {
 	uuidBytes, err := l.domain.GetUUID()
 	if err != nil {
 		panic(err)
@@ -126,7 +127,7 @@ func (l *libvirtDomainFacade) getUUID() string {
 	return uuidstr.String()
 }
 
-func (l *libvirtDomainFacade) getPowerState() string {
+func (l *libvirtDomainFacade) GetPowerState() string {
 	state := "Off"
 	active, err := l.domain.IsActive()
 	if err != nil {
@@ -140,7 +141,7 @@ func (l *libvirtDomainFacade) getPowerState() string {
 	return state
 }
 
-func (l *libvirtDomainFacade) getBootSourceTarget() string {
+func (l *libvirtDomainFacade) GetBootSourceTarget() string {
 
 	xmlDesc, err := l.domain.GetXMLDesc(libvirt.DOMAIN_XML_INACTIVE)
 	if err != nil {
@@ -199,7 +200,7 @@ func (l *libvirtDomainFacade) getBootSourceTarget() string {
 	return target
 }
 
-func (l *libvirtDomainFacade) getBootSourceMode() string {
+func (l *libvirtDomainFacade) GetBootSourceMode() string {
 	mode := "None"
 
 	xmlDesc, err := l.domain.GetXMLDesc(libvirt.DOMAIN_XML_INACTIVE)
@@ -217,7 +218,7 @@ func (l *libvirtDomainFacade) getBootSourceMode() string {
 	return mode
 }
 
-func (l *libvirtDomainFacade) getTotalCpus() uint {
+func (l *libvirtDomainFacade) GetTotalCpus() uint {
 	maxCpus, err := l.domain.GetMaxVcpus()
 	if err != nil {
 		panic(err)
@@ -225,7 +226,7 @@ func (l *libvirtDomainFacade) getTotalCpus() uint {
 	return maxCpus
 }
 
-func (l *libvirtDomainFacade) getTotalMemory() uint64 {
+func (l *libvirtDomainFacade) GetTotalMemory() uint64 {
 	maxMem, err := l.domain.GetMaxMemory()
 	if err != nil {
 		panic(err)
