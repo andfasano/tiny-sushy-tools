@@ -2,10 +2,11 @@ package redfish
 
 import (
 	"io"
+	"strconv"
 	"strings"
 	"text/template"
 
-	"github.com/andfasano/tiny-sushy-tools/internal/libvirtdriver"
+	"github.com/andfasano/tiny-sushy-tools/internal/litehost"
 )
 
 type system struct {
@@ -15,7 +16,7 @@ type system struct {
 	PowerState       string
 	BootSourceTarget string
 	BootSourceMode   string
-	TotalCpus        uint
+	TotalCpus        uint64
 	TotalMemoryGB    uint64
 	IndicatorLed     string
 
@@ -23,32 +24,24 @@ type system struct {
 	Password string
 }
 
-func newSystem(systemID string, rf *Server) *system {
-	s := &system{
-		Identity:         systemID,
-		Name:             "",
-		UUID:             "",
-		PowerState:       "Off",
-		BootSourceTarget: "None",
-		BootSourceMode:   "None",
-		TotalCpus:        0,
-		TotalMemoryGB:    0,
-		IndicatorLed:     "Lit",
-		Username:         "admin",
-		Password:         "password",
-	}
+func (s *system) newSystem(systemID string, rf *Server) error {
 
-	lv := libvirtdriver.NewLibvirtDomain(systemID, rf.TinyOobUser, rf.TinyOobIP, rf.TinyOobKey)
+	dl := litehost.DriverLoader{}
+	dl.StartLiteHost(rf.TinySushyDriver, systemID, rf.TinyOobUser, rf.TinyOobIP, rf.TinyOobKey)
 
-	s.UUID = lv.GetUUID()
-	s.Name = lv.GetName()
-	s.PowerState = lv.GetPowerState()
-	s.BootSourceTarget = lv.GetBootSourceTarget()
-	s.BootSourceMode = lv.GetBootSourceMode()
-	s.TotalCpus = lv.GetTotalCpus()
-	s.TotalMemoryGB = lv.GetTotalMemory()
+	s.Identity = systemID
+	s.Name = dl.LiteHostAttribute("Name", "unknown.litehost.local")
+	s.UUID = dl.LiteHostAttribute("UUID", "010294aa-a89c-40ea-982a-a1c64d6f4509")
+	s.PowerState = dl.LiteHostAttribute("PowerState", "Off")
+	s.BootSourceTarget = dl.LiteHostAttribute("BootSourceTarget", "None")
+	s.BootSourceMode = dl.LiteHostAttribute("BootSourceMode", "None")
+	s.TotalCpus, _ = strconv.ParseUint(dl.LiteHostAttribute("TotalCpus", "0"), 10, 0)
+	s.TotalMemoryGB, _ = strconv.ParseUint(dl.LiteHostAttribute("TotalMemoryGB", "0"), 10, 0)
+	s.IndicatorLed = dl.LiteHostAttribute("IndicatorLed", "Lit")
+	s.Username = dl.LiteHostAttribute("Username", "admin")
+	s.Password = dl.LiteHostAttribute("Password", "password")
 
-	return s
+	return nil
 }
 
 //Send renders a System template

@@ -18,10 +18,11 @@ type Server struct {
 
 	systems map[string]*system
 
-	TinySushyPort string
-	TinyOobUser   string
-	TinyOobIP     string
-	TinyOobKey    string
+	TinySushyPort   string
+	TinySushyDriver string
+	TinyOobUser     string
+	TinyOobIP       string
+	TinyOobKey      string
 }
 
 //New creates a new instance of the Redfish server
@@ -212,7 +213,8 @@ func (rf *Server) handleSystemsByID(w http.ResponseWriter, r *http.Request) {
 
 		s, ok := rf.systems[systemID]
 		if ok == false {
-			s = newSystem(systemID, rf)
+			s = new(system)
+			s.newSystem(systemID, rf)
 			rf.systems[systemID] = s
 		}
 

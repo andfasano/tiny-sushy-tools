@@ -8,10 +8,12 @@ import (
 	libvirt "github.com/libvirt/libvirt-go"
 )
 
-const DEVICE_TYPE_PXE = "Pxe"
-const DEVICE_TYPE_HDD = "Hdd"
-const DEVICE_TYPE_CD = "Cd"
-const DEVICE_TYPE_FLOPPY = "Floppy"
+const (
+	DEVICE_TYPE_PXE    = "Pxe"
+	DEVICE_TYPE_HDD    = "Hdd"
+	DEVICE_TYPE_CD     = "Cd"
+	DEVICE_TYPE_FLOPPY = "Floppy"
+)
 
 var BOOT_DEVICE_MAP map[string]string = map[string]string{
 	DEVICE_TYPE_PXE:    "network",
@@ -45,7 +47,7 @@ func reverseMap(src map[string]string) map[string]string {
 	return dest
 }
 
-type libvirtDomainFacade struct {
+type LibvirtDomainFacade struct {
 	conn   *libvirt.Connect
 	domain *libvirt.Domain
 }
@@ -76,41 +78,99 @@ func isValidUUID(u string) bool {
 	return err == nil
 }
 
-//Function exposed to
-func NewLibvirtDomain(systemID string, libvirtUser string, libvirtIP string, libvirtKey string) *libvirtDomainFacade {
-	var dom *libvirt.Domain
+//Open a new libvirt connection
+func (l *LibvirtDomainFacade) NewConnection(systemID string, tinyOobUser string, tinyOobIP string, tinyOobKey string) (map[string]string, error) {
+	var libvirtUri string
+	var err error
 
-	url, _ := uri(libvirtUser, libvirtIP, libvirtKey)
-	conn, err := libvirt.NewConnect(url)
+	libvirtUri, _ = uri(tinyOobUser, tinyOobIP, tinyOobKey)
+
+	l.conn, err = libvirt.NewConnect(libvirtUri)
 	if err != nil {
 		panic(err)
 	}
 
 	if isValidUUID(systemID) {
-		dom, err = conn.LookupDomainByUUIDString(systemID)
+		l.domain, err = l.conn.LookupDomainByUUIDString(systemID)
 		if err != nil {
 			panic(err)
 		}
 	} else {
-		dom, err = conn.LookupDomainByName(systemID)
+		l.domain, err = l.conn.LookupDomainByName(systemID)
 		if err != nil {
 			panic(err)
 		}
 	}
 
-	facade := &libvirtDomainFacade{
-		conn:   conn,
-		domain: dom,
+	systemMap := map[string]string{
+		"Identity":         l.getUUID(),
+		"Name":             l.getName(),
+		"UUID":             l.getUUID(),
+		"PowerState":       l.getPowerState(),
+		"BootSourceTarget": l.getBootSourceTarget(),
+		"BootSourceMode":   l.getBootSourceMode(),
+		"TotalCpus":        strconv.FormatUint(uint64(l.getTotalCpus()), 10),   //uint
+		"TotalMemoryGB":    strconv.FormatUint(uint64(l.getTotalMemory()), 10), //uint64
+		"IndicatorLed":     "Lit",
+		"Username":         "admin",
+		"Password":         "password",
 	}
 
-	return facade
+	return systemMap, nil
 }
 
-func (l *libvirtDomainFacade) Close() {
+//Closes libvirt connection
+func (l *LibvirtDomainFacade) CloseConnection() error {
 	l.conn.Close()
+	return nil
 }
 
-func (l *libvirtDomainFacade) GetName() string {
+func (l *LibvirtDomainFacade) BootFromDevice(device string) error { return nil }
+func (l *LibvirtDomainFacade) MountISO(isoUrl string) error       { return nil }
+func (l *LibvirtDomainFacade) EjectISO() error {
+	//l.domain.AttachDevice()
+	return nil
+}
+
+func (l *LibvirtDomainFacade) PowerOn() error {
+	//DomainLifecycle type
+	// VIR_DOMAIN_LIFECYCLE_POWEROFF	=	0 (0x0)
+	// VIR_DOMAIN_LIFECYCLE_REBOOT	=	1 (0x1)
+	// VIR_DOMAIN_LIFECYCLE_CRASH	=	2 (0x2)
+	// VIR_DOMAIN_LIFECYCLE_LAST	=	3 (0x3)
+	//DomainLifecycleAction
+	// VIR_DOMAIN_LIFECYCLE_ACTION_DESTROY	=	0 (0x0)
+	// VIR_DOMAIN_LIFECYCLE_ACTION_RESTART	=	1 (0x1)
+	// VIR_DOMAIN_LIFECYCLE_ACTION_RESTART_RENAME	=	2 (0x2)
+	// VIR_DOMAIN_LIFECYCLE_ACTION_PRESERVE	=	3 (0x3)
+	// VIR_DOMAIN_LIFECYCLE_ACTION_COREDUMP_DESTROY	=	4 (0x4)
+	// VIR_DOMAIN_LIFECYCLE_ACTION_COREDUMP_RESTART	=	5 (0x5)
+	// VIR_DOMAIN_LIFECYCLE_ACTION_LAST	=	6 (0x6)
+	//Flags - DomainModificationImpact
+	// VIR_DOMAIN_AFFECT_CURRENT	=	0 (0x0)
+	// Affect current domain state.
+	// VIR_DOMAIN_AFFECT_LIVE	=	1 (0x1; 1 << 0)
+	// Affect running domain state.
+	// VIR_DOMAIN_AFFECT_CONFIG	=	2 (0x2; 1 << 1)
+	// Affect persistent domain state. 1 << 2 is reserved for virTypedParameterFlags
+
+	if l.domain.SetLifecycleAction(1, 1, 1) != nil {
+		return nil
+	}
+	// fixme
+	return nil
+}
+
+func (l *LibvirtDomainFacade) PowerOff() error {
+	if l.domain.Shutdown() != nil {
+		return nil
+	}
+	//fixme
+	return nil
+}
+func (l *LibvirtDomainFacade) Reboot() error { return nil }
+
+func (l *LibvirtDomainFacade) getName() string {
 	name, err := l.domain.GetName()
 	if err != nil {
 		panic(err)
@@ -118,7 +178,7 @@ func (l *libvirtDomainFacade) GetName() string {
 	return name
 }
 
-func (l *libvirtDomainFacade) GetUUID() string {
+func (l *LibvirtDomainFacade) getUUID() string {
 	uuidBytes, err := l.domain.GetUUID()
 	if err != nil {
 		panic(err)
@@ -127,7 +187,7 @@ func (l *libvirtDomainFacade) GetUUID() string {
 	return uuidstr.String()
 }
 
-func (l *libvirtDomainFacade) GetPowerState() string {
+func (l *LibvirtDomainFacade) getPowerState() string {
 	state := "Off"
 	active, err := l.domain.IsActive()
 	if err != nil {
@@ -141,7 +201,7 @@ func (l *libvirtDomainFacade) GetPowerState() string {
 	return state
 }
 
-func (l *libvirtDomainFacade) GetBootSourceTarget() string {
+func (l *LibvirtDomainFacade) getBootSourceTarget() string {
 
 	xmlDesc, err := l.domain.GetXMLDesc(libvirt.DOMAIN_XML_INACTIVE)
 	if err != nil {
@@ -200,7 +260,7 @@ func (l *libvirtDomainFacade) GetBootSourceTarget() string {
 	return target
 }
 
-func (l *libvirtDomainFacade) GetBootSourceMode() string {
+func (l *LibvirtDomainFacade) getBootSourceMode() string {
 	mode := "None"
 
 	xmlDesc, err := l.domain.GetXMLDesc(libvirt.DOMAIN_XML_INACTIVE)
@@ -218,7 +278,7 @@ func (l *libvirtDomainFacade) GetBootSourceMode() string {
 	return mode
 }
 
-func (l *libvirtDomainFacade) GetTotalCpus() uint {
+func (l *LibvirtDomainFacade) getTotalCpus() uint {
 	maxCpus, err := l.domain.GetMaxVcpus()
 	if err != nil {
 		panic(err)
@@ -226,7 +286,7 @@ func (l *libvirtDomainFacade) GetTotalCpus() uint {
 	return maxCpus
 }
 
-func (l *libvirtDomainFacade) GetTotalMemory() uint64 {
+func (l *LibvirtDomainFacade) getTotalMemory() uint64 {
 	maxMem, err := l.domain.GetMaxMemory()
 	if err != nil {
 		panic(err)
